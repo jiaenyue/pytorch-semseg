@@ -5,12 +5,19 @@ __pycache__/
 
 # Torch Models
 *.pkl
+*.pth
+current_train.py
+video_test*.py
+*.swp
+data
+ckpt
 
 # C extensions
 *.so
 
 # Distribution / packaging
 .Python
+local_test.py
 .DS_STORE
 .idea/
 .vscode/
@@ -19,7 +26,6 @@ build/
 develop-eggs/
 dist/
 downloads/
-models/
 eggs/
 .eggs/
 lib/

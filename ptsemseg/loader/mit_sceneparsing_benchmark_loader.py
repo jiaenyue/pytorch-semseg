@@ -5,7 +5,7 @@ import scipy.misc as m
 
 from torch.utils import data
 
-from ptsemseg.uitls import recursive_glob
+from ptsemseg.utils import recursive_glob
 
 
 class MITSceneParsingBenchmarkLoader(data.Dataset):
@@ -23,7 +23,16 @@ class MITSceneParsingBenchmarkLoader(data.Dataset):
     https://github.com/CSAILVision/placeschallenge/tree/master/sceneparsing
 
     """
-    def __init__(self, root, split="training", is_transform=False, img_size=512):
+
+    def __init__(
+        self,
+        root,
+        split="training",
+        is_transform=False,
+        img_size=512,
+        augmentations=None,
+        img_norm=True,
+    ):
         """__init__
 
         :param root:
@@ -34,18 +43,24 @@ class MITSceneParsingBenchmarkLoader(data.Dataset):
         self.root = root
         self.split = split
         self.is_transform = is_transform
+        self.augmentations = augmentations
+        self.img_norm = img_norm
         self.n_classes = 151  # 0 is reserved for "other"
-        self.img_size = img_size if isinstance(img_size, tuple) else (img_size, img_size)
+        self.img_size = (
+            img_size if isinstance(img_size, tuple) else (img_size, img_size)
+        )
         self.mean = np.array([104.00699, 116.66877, 122.67892])
         self.files = {}
 
-        self.images_base = os.path.join(self.root, 'images', self.split)
-        self.annotations_base = os.path.join(self.root, 'annotations', self.split)
+        self.images_base = os.path.join(self.root, "images", self.split)
+        self.annotations_base = os.path.join(self.root, "annotations", self.split)
 
-        self.files[split] = recursive_glob(rootdir=self.images_base, suffix='.jpg')
+        self.files[split] = recursive_glob(rootdir=self.images_base, suffix=".jpg")
 
         if not self.files[split]:
-            raise Exception("No files for split=[%s] found in %s" % (split, self.images_base))
+            raise Exception(
+                "No files for split=[%s] found in %s" % (split, self.images_base)
+            )
 
         print("Found %d %s images" % (len(self.files[split]), split))
 
@@ -59,13 +74,18 @@ class MITSceneParsingBenchmarkLoader(data.Dataset):
         :param index:
         """
         img_path = self.files[self.split][index].rstrip()
-        lbl_path = os.path.join(self.annotations_base, os.path.basename(img_path)[:-4] + '.png')
+        lbl_path = os.path.join(
+            self.annotations_base, os.path.basename(img_path)[:-4] + ".png"
+        )
 
         img = m.imread(img_path)
         img = np.array(img, dtype=np.uint8)
 
         lbl = m.imread(lbl_path)
         lbl = np.array(lbl, dtype=np.uint8)
+
+        if self.augmentations is not None:
+            img, lbl = self.augmentations(img, lbl)
 
         if self.is_transform:
             img, lbl = self.transform(img, lbl)
@@ -78,19 +98,22 @@ class MITSceneParsingBenchmarkLoader(data.Dataset):
         :param img:
         :param lbl:
         """
-        img = img[:, :, ::-1]
+        img = m.imresize(
+            img, (self.img_size[0], self.img_size[1])
+        )  # uint8 with RGB mode
+        img = img[:, :, ::-1]  # RGB -> BGR
         img = img.astype(np.float64)
         img -= self.mean
-        img = m.imresize(img, (self.img_size[0], self.img_size[1]))
-        # Resize scales images from 0 to 255, thus we need
-        # to divide by 255.0
-        img = img.astype(float) / 255.0
-        # NHWC -> NCWH
+        if self.img_norm:
+            # Resize scales images from 0 to 255, thus we need
+            # to divide by 255.0
+            img = img.astype(float) / 255.0
+        # NHWC -> NCHW
         img = img.transpose(2, 0, 1)
 
         classes = np.unique(lbl)
         lbl = lbl.astype(float)
-        lbl = m.imresize(lbl, (self.img_size[0], self.img_size[1]), 'nearest', mode='F')
+        lbl = m.imresize(lbl, (self.img_size[0], self.img_size[1]), "nearest", mode="F")
         lbl = lbl.astype(int)
 
         if not np.all(classes == np.unique(lbl)):
